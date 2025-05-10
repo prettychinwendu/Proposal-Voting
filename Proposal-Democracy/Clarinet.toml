@@ -1,0 +1,50 @@
+[project]
+name = 'Proposal-Democracy'
+description = ''
+authors = []
+telemetry = true
+cache_dir = '.\.cache'
+requirements = []
+
+[contracts.Example-Treasury]
+path = 'contracts/Example-Treasury.clar'
+clarity_version = 2
+epoch = 2.5
+
+[contracts.Executable-Trait]
+path = 'contracts/Executable-Trait.clar'
+clarity_version = 2
+epoch = 2.5
+
+[contracts.Executor-Helper]
+path = 'contracts/Executor-Helper.clar'
+clarity_version = 2
+epoch = 2.5
+
+[contracts.Executor-Trait]
+path = 'contracts/Executor-Trait.clar'
+clarity_version = 2
+epoch = 2.5
+
+[contracts.Proposal-Senate]
+path = 'contracts/Proposal-Senate.clar'
+clarity_version = 2
+epoch = 2.5
+
+[contracts.Proposal-Utils]
+path = 'contracts/Proposal-Utils.clar'
+clarity_version = 2
+epoch = 2.5
+
+[contracts.Submit-Proposal-Trait]
+path = 'contracts/Submit-Proposal-Trait.clar'
+clarity_version = 2
+epoch = 2.5
+[repl.analysis]
+passes = ['check_checker']
+
+[repl.analysis.check_checker]
+strict = false
+trusted_sender = false
+trusted_caller = false
+callee_filter = false
