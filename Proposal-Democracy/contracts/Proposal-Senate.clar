@@ -23,6 +23,40 @@
 ;; Proposal status enum: 0 = Active, 1 = Approved, 2 = Rejected, 3 = Executed
 (define-data-var next-proposal-id uint u0)
 
+;; Initial token distribution for governance
+(define-data-var total-supply uint u1000000)
+
+;; Reference to the executor helper contract
+(define-data-var executor-helper principal tx-sender)
+
+;; Define the executor trait interface
+(define-trait executor-helper-trait
+  (
+    ;; Extract the target contract principal from the execution data
+    (get-target-contract ((buff 1024)) (response principal uint))
+    
+    ;; Extract the call data from the execution data
+    (get-call-data ((buff 1024)) (response (buff 1024) uint))
+    
+    ;; Execute the proposal data
+    (execute ((buff 1024)) (response bool uint))
+  )
+)
+
+;; Define the executable trait
+(define-trait executable-contract
+  (
+    ;; Execute function that takes a buffer of parameters and returns a success/failure response
+    (execute ((buff 1024)) (response bool uint))
+  )
+)
+
+;; Whitelisted contracts that can be called by proposals
+(define-map whitelisted-contracts
+  { contract: principal }
+  { allowed: bool }
+)
+
 ;; Core proposal data
 (define-map proposals
   { proposal-id: uint }
@@ -43,15 +77,6 @@
 (define-map proposal-votes
   { proposal-id: uint, voter: principal }
   { voted: bool, support: bool, weight: uint }
-)
-
-;; Initial token distribution for governance
-(define-data-var total-supply uint u1000000)
-
-;; Whitelisted contracts that can be called by proposals
-(define-map whitelisted-contracts
-  { contract: principal }
-  { allowed: bool }
 )
 
 ;; Contract owner - can update parameters and manage whitelist
@@ -94,10 +119,16 @@
 (define-read-only (can-execute-proposal (proposal-id uint))
   (match (map-get? proposals { proposal-id: proposal-id })
     proposal (begin
-      (asserts! (not (get executed proposal)) (err ERR_PROPOSAL_ALREADY_EXECUTED))
-      (asserts! (> (get voting-period-end proposal) block-height) ERR_VOTING_PERIOD_NOT_ENDED)
-      (asserts! (> (get votes-for proposal) (get votes-against proposal)) ERR_PROPOSAL_REJECTED)
-      (ok true)
+      (if (not (get executed proposal))
+        (if (> (get voting-period-end proposal) block-height)
+          (if (> (get votes-for proposal) (get votes-against proposal))
+            (ok true)
+            ERR_PROPOSAL_REJECTED
+          )
+          ERR_VOTING_PERIOD_NOT_ENDED
+        )
+        ERR_PROPOSAL_ALREADY_EXECUTED
+      )
     )
     ERR_PROPOSAL_NOT_FOUND
   )
@@ -183,7 +214,7 @@
 )
 
 ;; Execute an approved proposal
-(define-public (execute-proposal (proposal-id uint))
+(define-public (execute-proposal (proposal-id uint) (executor-helper-contract <executor-helper-trait>))
   (let (
     (proposal (unwrap! (map-get? proposals { proposal-id: proposal-id }) ERR_PROPOSAL_NOT_FOUND))
   )
@@ -207,10 +238,20 @@
     
     ;; Execute the proposal if execution data is provided
     (match (get execution-data proposal)
-      data (match (contract-call? (unwrap! (contract-of data) ERR_EXECUTION_FAILED) data)
-        success (ok true)
-        failure ERR_EXECUTION_FAILED
-      )
+      data 
+        (begin
+          ;; Parse the contract principal from the first part of the buffer
+          (let (
+            (target-contract (unwrap! (contract-call? executor-helper-contract get-target-contract data) ERR_EXECUTION_FAILED))
+            (call-data (unwrap! (contract-call? executor-helper-contract get-call-data data) ERR_EXECUTION_FAILED))
+          )
+            ;; Check if the contract is whitelisted
+            (asserts! (is-contract-whitelisted target-contract) ERR_UNAUTHORIZED)
+            
+            ;; Call the execute function with the parsed data
+            (contract-call? executor-helper-contract execute data)
+          )
+        )
       (ok true) ;; No execution data, just mark as executed
     )
   )
@@ -281,6 +322,15 @@
   (begin
     (asserts! (is-eq tx-sender (var-get contract-owner)) ERR_UNAUTHORIZED)
     (var-set default-voting-period new-period)
+    (ok true)
+  )
+)
+
+;; Set the executor helper contract
+(define-public (set-executor-helper (new-helper principal))
+  (begin
+    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR_UNAUTHORIZED)
+    (var-set executor-helper new-helper)
     (ok true)
   )
 )
